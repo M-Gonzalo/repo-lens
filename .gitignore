@@ -1,0 +1,10 @@
+# Binaries
+repo-lens
+repo-lens.exe
+
+# Local Go directories
+.gocache/
+.gopath/
+
+# OS metadata
+.DS_Store
