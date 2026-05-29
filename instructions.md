@@ -32,7 +32,12 @@ Before using any other tool, call `listRepos` to discover what repos exist and t
 ### `readFileAtRef`
 **When**: You need to see a file's contents — either current (`ref: "HEAD"`) or historical.
 **Why not just use your built-in file reader?** Use this when you need to read a file *as it was at a specific commit*. For current files, your built-in tool is fine.
-**Key params**: `repo`, `path` (relative to repo root), `ref` (default: HEAD), `startLine`/`endLine` for windowing.
+**Key params**:
+- `repo` — the repository name
+- `path` — relative path to the file
+- `ref` — commit, branch, or tag (default: HEAD)
+- `startLine` / `endLine` — line window range (optional)
+- `format` — output format: `"text"` (default) or `"json"`
 
 ---
 
@@ -44,6 +49,7 @@ Before using any other tool, call `listRepos` to discover what repos exist and t
 - `path` — restrict to commits touching a specific file
 - `grep` — filter by commit message substring (e.g. a Jira tag)
 - `author`, `since`, `until` — date and author filters
+- `format` — output format: `"text"` (default) or `"json"`
 
 ---
 
@@ -54,6 +60,7 @@ Before using any other tool, call `listRepos` to discover what repos exist and t
 - `target` — default `HEAD`
 - `stat: true` — returns only the summary (files changed, insertions, deletions) without the full diff
 - `path` — scope to a single file when the full diff is too large
+- `format` — output format: `"text"` (default) or `"json"`
 
 **Pagination**: If `omitted.truncated` is true, use `path=` with each file from `omitted.affectedFiles` to fetch individual file diffs.
 
@@ -61,7 +68,11 @@ Before using any other tool, call `listRepos` to discover what repos exist and t
 
 ### `gitShow`
 **When**: You want the full picture of a single commit — author, message, and diff.
-**Key params**: `repo`, `ref` (commit hash or branch), `path` (optional, scopes the diff).
+**Key params**:
+- `repo` — the repository name
+- `ref` — commit hash or branch (default: HEAD)
+- `path` — scope the diff to a single file (optional)
+- `format` — output format: `"text"` (default) or `"json"`
 
 **Pagination**: Same as `gitDiff` — use `path=` for large commits.
 
@@ -69,7 +80,11 @@ Before using any other tool, call `listRepos` to discover what repos exist and t
 
 ### `gitBlame`
 **When**: You need to know who last touched specific lines and in which commit.
-**Key params**: `repo`, `path`, `startLine`/`endLine` (1-indexed, both optional).
+**Key params**:
+- `repo` — the repository name
+- `path` — relative path to the file
+- `startLine` / `endLine` — line window range (optional)
+- `format` — output format: `"text"` (default) or `"json"`
 
 ---
 
@@ -81,13 +96,21 @@ Before using any other tool, call `listRepos` to discover what repos exist and t
 
 ### `gitStatus`
 **When**: You want to know the current state of a repo — what's staged, modified, untracked.
+**Key params**:
+- `repo` — the repository name
+- `format` — output format: `"text"` (default) or `"json"`
 **Returns**: branch, ahead/behind counts, staged files, modified files, untracked files.
 
 ---
 
 ### `fileHistory`
 **When**: You want a compact changelog for one specific file — how has it evolved?
-**Key params**: `repo`, `path`, `maxEntries` (default 20), `offset` (pagination), `since`/`until`.
+**Key params**:
+- `repo` — the repository name
+- `path` — relative path to the file
+- `maxEntries` / `offset` — pagination
+- `since` / `until` — date filters
+- `format` — output format: `"text"` (default) or `"json"`
 **Follow-up**: Use `readFileAtRef` with the returned `hash` values to see the file at a specific point.
 
 ---

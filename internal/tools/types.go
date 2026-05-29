@@ -60,6 +60,7 @@ type ReadFileAtRefInput struct {
 	Ref       string `json:"ref,omitempty"       jsonschema:"commit hash, branch, or tag; defaults to HEAD"`
 	StartLine int    `json:"startLine,omitempty" jsonschema:"first line to return (1-indexed); 0 means beginning"`
 	EndLine   int    `json:"endLine,omitempty"   jsonschema:"last line to return (inclusive); 0 means end of file"`
+	Format    string `json:"format,omitempty"    jsonschema:"Output format: 'text' (default) or 'json'"`
 }
 
 type ReadFileAtRefOutput struct {
@@ -81,6 +82,7 @@ type GitLogInput struct {
 	Path     string `json:"path,omitempty"     jsonschema:"restrict to commits that touch this path"`
 	Grep     string `json:"grep,omitempty"     jsonschema:"filter by commit message substring"`
 	Ref      string `json:"ref,omitempty"      jsonschema:"branch, tag, or commit range (e.g. main or HEAD~10..HEAD)"`
+	Format   string `json:"format,omitempty"   jsonschema:"Output format: 'text' (default) or 'json'"`
 }
 
 type CommitInfo struct {
@@ -105,6 +107,7 @@ type GitDiffInput struct {
 	Target string `json:"target,omitempty" jsonschema:"target ref; defaults to HEAD"`
 	Path   string `json:"path,omitempty"   jsonschema:"restrict diff to this path"`
 	Stat   bool   `json:"stat,omitempty"   jsonschema:"return only the stat summary, not the full diff"`
+	Format string `json:"format,omitempty"   jsonschema:"Output format: 'text' (default) or 'json'"`
 }
 
 type DiffStats struct {
@@ -122,9 +125,10 @@ type GitDiffOutput struct {
 // — gitShow —
 
 type GitShowInput struct {
-	Repo string `json:"repo"          jsonschema:"name of the repository under workspace"`
-	Ref  string `json:"ref,omitempty" jsonschema:"commit hash, branch, or tag; defaults to HEAD"`
-	Path string `json:"path,omitempty" jsonschema:"restrict diff to this file path"`
+	Repo   string `json:"repo"          jsonschema:"name of the repository under workspace"`
+	Ref    string `json:"ref,omitempty" jsonschema:"commit hash, branch, or tag; defaults to HEAD"`
+	Path   string `json:"path,omitempty" jsonschema:"restrict diff to this file path"`
+	Format string `json:"format,omitempty" jsonschema:"Output format: 'text' (default) or 'json'"`
 }
 
 type GitShowOutput struct {
@@ -144,6 +148,7 @@ type GitBlameInput struct {
 	Path      string `json:"path"                jsonschema:"relative path to the file"`
 	StartLine int    `json:"startLine,omitempty" jsonschema:"first line to blame (1-indexed); 0 means beginning"`
 	EndLine   int    `json:"endLine,omitempty"   jsonschema:"last line to blame (inclusive); 0 means end of file"`
+	Format    string `json:"format,omitempty"    jsonschema:"Output format: 'text' (default) or 'json'"`
 }
 
 type BlameEntry struct {
@@ -180,7 +185,8 @@ type GitBranchesOutput struct {
 // — gitStatus —
 
 type GitStatusInput struct {
-	Repo string `json:"repo" jsonschema:"name of the repository under workspace"`
+	Repo   string `json:"repo" jsonschema:"name of the repository under workspace"`
+	Format string `json:"format,omitempty" jsonschema:"Output format: 'text' (default) or 'json'"`
 }
 
 type GitStatusOutput struct {
@@ -201,6 +207,7 @@ type FileHistoryInput struct {
 	Until      string `json:"until,omitempty"      jsonschema:"show history older than this date"`
 	MaxEntries int    `json:"maxEntries,omitempty" jsonschema:"maximum entries to return; defaults to 20"`
 	Offset     int    `json:"offset,omitempty"     jsonschema:"skip first N entries for pagination"`
+	Format     string `json:"format,omitempty"     jsonschema:"Output format: 'text' (default) or 'json'"`
 }
 
 type FileHistoryEntry struct {

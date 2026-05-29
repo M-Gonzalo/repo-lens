@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -226,10 +227,23 @@ func (h *handlers) readFileAtRef(ctx context.Context, _ *mcp.CallToolRequest, in
 		content = truncated
 	}
 
-	return nil, ReadFileAtRefOutput{
-		Content:    content,
-		TotalLines: totalLines,
-		Ref:        ref,
-		Omitted:    omitted,
-	}, nil
+	if input.Format == "json" {
+		return nil, ReadFileAtRefOutput{
+			Content:    content,
+			TotalLines: totalLines,
+			Ref:        ref,
+			Omitted:    omitted,
+		}, nil
+	}
+
+	var sb strings.Builder
+	if omitted != nil && omitted.Truncated {
+		sb.WriteString(fmt.Sprintf("[Warning: Content truncated. Reason: %s (Total lines: %d, Shown: %d)]\n\n", omitted.Reason, omitted.TotalLines, omitted.ShownLines))
+	}
+	sb.WriteString(content)
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: sb.String()},
+		},
+	}, ReadFileAtRefOutput{}, nil
 }
