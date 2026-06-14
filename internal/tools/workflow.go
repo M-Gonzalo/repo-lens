@@ -2,14 +2,21 @@ package tools
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"repo-lens/internal/runner"
 	"repo-lens/internal/sandbox"
 )
+
+//go:embed researcher_agent.md
+var researcherAgentMD []byte
 
 func (h *handlers) resolveJiraTag(ctx context.Context, _ *mcp.CallToolRequest, input ResolveJiraTagInput) (*mcp.CallToolResult, ResolveJiraTagOutput, error) {
 	if input.Tag == "" {
@@ -332,5 +339,48 @@ var ansiRegex = regexp.MustCompile("\x1b\\[[0-9;]*[a-zA-Z]")
 
 func stripANSI(s string) string {
 	return ansiRegex.ReplaceAllString(s, "")
+}
+
+const researchTimeout = 180 * time.Second
+
+// ensureResearcherAgent writes the embedded agent definition to the global
+// OpenCode agent directory if it doesn't already exist.
+func ensureResearcherAgent() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("home dir: %w", err)
+	}
+	dir := filepath.Join(home, ".config", "opencode", "agent")
+	path := filepath.Join(dir, "researcher.md")
+
+	if _, err := os.Stat(path); err == nil {
+		return nil // already installed
+	}
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("mkdir: %w", err)
+	}
+	return os.WriteFile(path, researcherAgentMD, 0o644)
+}
+
+func (h *handlers) research(ctx context.Context, _ *mcp.CallToolRequest, input ResearchInput) (*mcp.CallToolResult, struct{}, error) {
+	if input.Question == "" {
+		return nil, struct{}{}, fmt.Errorf("question is required")
+	}
+
+	if err := ensureResearcherAgent(); err != nil {
+		return nil, struct{}{}, fmt.Errorf("install agent: %w", err)
+	}
+
+	out, err := runner.RunCommandWithTimeout(ctx, researchTimeout, h.workspace, "opencode", "run", "--agent", "researcher", input.Question)
+	if err != nil {
+		return nil, struct{}{}, fmt.Errorf("opencode: %w", err)
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: string(out)},
+		},
+	}, struct{}{}, nil
 }
 

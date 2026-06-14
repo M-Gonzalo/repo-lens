@@ -185,7 +185,7 @@ func TestRunCommand_CancelledContext(t *testing.T) {
 // --- RunCommandWithTimeout tests ---
 
 func TestRunCommandWithTimeout_CustomTimeout(t *testing.T) {
-	out, err := RunCommandWithTimeout(context.Background(), 5*time.Second, "echo", "custom-timeout")
+	out, err := RunCommandWithTimeout(context.Background(), 5*time.Second, "", "echo", "custom-timeout")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -195,7 +195,7 @@ func TestRunCommandWithTimeout_CustomTimeout(t *testing.T) {
 }
 
 func TestRunCommandWithTimeout_ExceedsTimeout(t *testing.T) {
-	_, err := RunCommandWithTimeout(context.Background(), 100*time.Millisecond, "sleep", "10")
+	_, err := RunCommandWithTimeout(context.Background(), 100*time.Millisecond, "", "sleep", "10")
 	if err == nil {
 		t.Fatal("expected error when command exceeds timeout, got nil")
 	}

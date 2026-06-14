@@ -287,6 +287,12 @@ type CollectReviewBundleOutput struct {
 	Jira    *JiraInfo     `json:"jira,omitempty"`
 }
 
+// — research —
+
+type ResearchInput struct {
+	Question string `json:"question" jsonschema:"the question to research about the codebase; be specific with module names or file paths if known"`
+}
+
 // — shared helpers —
 
 func splitLines(s string) []string {

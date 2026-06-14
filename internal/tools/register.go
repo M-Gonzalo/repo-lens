@@ -72,4 +72,9 @@ func Register(s *mcp.Server, workspace string) {
 		Name:        "collectReviewBundle",
 		Description: "Aggregate everything needed for a code review. Provide a jiraTag to find all commits mentioning that ticket across all repos, or a commit hash to review a single commit. Returns per-repo commit details with diffs, stats, and optional Jira ticket metadata from jv.",
 	}, h.collectReviewBundle)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "research",
+		Description: "Delegate a codebase research question to an AI agent that reads files and searches for patterns in its own context window, returning a concise answer. Use for questions that would require reading many files to answer. Requires opencode to be installed.",
+	}, h.research)
 }

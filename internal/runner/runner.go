@@ -53,14 +53,18 @@ func RunRipgrep(ctx context.Context, searchPath string, args ...string) ([]byte,
 
 // RunCommand runs a specific external command (e.g. jv) with the default timeout.
 func RunCommand(ctx context.Context, command string, args ...string) ([]byte, error) {
-	return RunCommandWithTimeout(ctx, DefaultTimeout, command, args...)
+	return RunCommandWithTimeout(ctx, DefaultTimeout, "", command, args...)
 }
 
 // RunCommandWithTimeout runs an external command with a caller-specified timeout.
-func RunCommandWithTimeout(ctx context.Context, timeout time.Duration, command string, args ...string) ([]byte, error) {
+// If dir is non-empty, the command runs in that directory.
+func RunCommandWithTimeout(ctx context.Context, timeout time.Duration, dir, command string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, command, args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
