@@ -122,6 +122,21 @@ Before using any other tool, call `listRepos` to discover what repos exist and t
 
 ---
 
+### `research`
+**When**: You need to answer a question that would require reading many files to answer — architecture overviews, tracing a flow across layers, understanding how subsystems connect. Use this instead of opening files one by one.
+**Key params**:
+- `question` — the question to research; be specific with module names or file paths if known
+- `repo` — optional; scope the investigation to a single repository
+- `context` — optional array of file paths the agent should read before investigating; use this to provide any relevant background — prior research results, design docs, TDDs, specs, notes, or anything else that would help inform the answer
+
+**Returns**: A structured answer with evidence and file references. The result is automatically saved to `{workspace}/.opencode/research/<timestamp>.md` and the path is appended to the response — pass it as `context` in follow-up calls to chain investigations.
+
+**Tip**: The saved file path returned in the response can itself be passed as `context` in a follow-up call, along with any other relevant files.
+
+**Note**: Requires `opencode` to be installed and in `PATH`.
+
+---
+
 ### `collectReviewBundle`
 **When**: You're doing a full code review and want everything in one call.
 **Key params**:

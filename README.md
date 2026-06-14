@@ -48,6 +48,7 @@ The workspace is the root directory that contains your git repositories. repo-le
 | `fileHistory` | Compact changelog for a single file |
 | `resolveJiraTag` | Find commits mentioning a Jira tag across all repos |
 | `collectReviewBundle` | Aggregate everything needed for a code review (outputs markdown by default, supports json) |
+| `research` | Delegate a codebase question to an AI sub-agent that reads files and searches for patterns, returning a structured answer. Accepts a `context` array of file paths (prior research, design docs, specs, notes — anything relevant) the agent reads before investigating. Results are saved to `{workspace}/.opencode/research/<timestamp>.md`. Requires `opencode`. |
 
 ## Security
 
@@ -60,6 +61,7 @@ The workspace is the root directory that contains your git repositories. repo-le
 - `git` (required)
 - `rg` / ripgrep (required for `search`)
 - `jv` (optional — for Jira ticket lookup in `collectReviewBundle`)
+- `opencode` (optional — required for `research`)
 
 ## Flags
 
