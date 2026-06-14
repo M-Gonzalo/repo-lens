@@ -372,7 +372,12 @@ func (h *handlers) research(ctx context.Context, _ *mcp.CallToolRequest, input R
 		return nil, struct{}{}, fmt.Errorf("install agent: %w", err)
 	}
 
-	out, err := runner.RunCommandWithTimeout(ctx, researchTimeout, h.workspace, "opencode", "run", "--agent", "researcher", input.Question)
+	prompt := input.Question
+	if input.Context != "" {
+		prompt = "First read " + input.Context + " for context from a previous investigation. Then answer: " + input.Question
+	}
+
+	out, err := runner.RunCommandWithTimeout(ctx, researchTimeout, h.workspace, "opencode", "run", "--agent", "researcher", prompt)
 	if err != nil {
 		return nil, struct{}{}, fmt.Errorf("opencode: %w", err)
 	}
