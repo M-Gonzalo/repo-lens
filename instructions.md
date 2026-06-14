@@ -54,8 +54,9 @@ Before using any other tool, call `listRepos` to discover what repos exist and t
 ---
 
 ### `gitDiff`
-**When**: You want to see what changed between two points.
+**When**: You want to see what changed between two points, or what's currently uncommitted in the working tree.
 **Key params**:
+- `dirty: true` — diff the working tree against HEAD; shows all uncommitted changes including untracked files. **Ignores `base` and `target`.** Use this to see what's in progress before it's committed.
 - `base` — default `HEAD~1`; can be a branch name, commit hash, or tag
 - `target` — default `HEAD`
 - `stat: true` — returns only the summary (files changed, insertions, deletions) without the full diff
