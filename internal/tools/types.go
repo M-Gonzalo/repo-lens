@@ -295,10 +295,6 @@ type ResearchInput struct {
 	Context  []string `json:"context,omitempty" jsonschema:"file paths to previous research results to build upon"`
 }
 
-type ResearchOutput struct {
-	Answer string `json:"answer"`
-}
-
 // — shared helpers —
 
 func splitLines(s string) []string {

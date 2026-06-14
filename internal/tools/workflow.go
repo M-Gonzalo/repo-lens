@@ -362,13 +362,13 @@ func ensureResearcherAgent() error {
 	return os.WriteFile(path, researcherAgentMD, 0o644)
 }
 
-func (h *handlers) research(ctx context.Context, _ *mcp.CallToolRequest, input ResearchInput) (*mcp.CallToolResult, ResearchOutput, error) {
+func (h *handlers) research(ctx context.Context, _ *mcp.CallToolRequest, input ResearchInput) (*mcp.CallToolResult, any, error) {
 	if input.Question == "" {
-		return nil, ResearchOutput{}, fmt.Errorf("question is required")
+		return nil, nil, fmt.Errorf("question is required")
 	}
 
 	if err := ensureResearcherAgent(); err != nil {
-		return nil, ResearchOutput{}, fmt.Errorf("install agent: %w", err)
+		return nil, nil, fmt.Errorf("install agent: %w", err)
 	}
 
 	prompt := input.Question
@@ -382,7 +382,7 @@ func (h *handlers) research(ctx context.Context, _ *mcp.CallToolRequest, input R
 
 	out, err := runner.RunCommandWithTimeout(ctx, researchTimeout, h.workspace, "opencode", "run", "--agent", "researcher", prompt)
 	if err != nil {
-		return nil, ResearchOutput{}, fmt.Errorf("opencode: %w", err)
+		return nil, nil, fmt.Errorf("opencode: %w", err)
 	}
 	answer := string(out)
 
@@ -390,5 +390,5 @@ func (h *handlers) research(ctx context.Context, _ *mcp.CallToolRequest, input R
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: answer},
 		},
-	}, ResearchOutput{Answer: answer}, nil
+	}, nil, nil
 }
