@@ -174,6 +174,27 @@ func (h *handlers) gitDiff(ctx context.Context, _ *mcp.CallToolRequest, input Gi
 		rangeArgs = []string{base + ".." + target}
 	}
 
+	// Gather untracked files if dirty is true
+	var untrackedFiles []string
+	if input.Dirty {
+		statusArgs := []string{"status", "--porcelain=v2", "-uall"}
+		if input.Path != "" {
+			statusArgs = append(statusArgs, "--", input.Path)
+		}
+		statusOut, err := runner.RunGit(ctx, repoPath, statusArgs...)
+		if err == nil {
+			lines := splitLines(string(statusOut))
+			for _, line := range lines {
+				if strings.HasPrefix(line, "? ") {
+					untrackedFile := strings.TrimPrefix(line, "? ")
+					if _, err := sandbox.ValidatePath(h.workspace, repoPath, untrackedFile); err == nil {
+						untrackedFiles = append(untrackedFiles, untrackedFile)
+					}
+				}
+			}
+		}
+	}
+
 	// --- stat ---
 	statArgs := append([]string{"diff", "--stat"}, rangeArgs...)
 	if input.Path != "" {
@@ -184,6 +205,49 @@ func (h *handlers) gitDiff(ctx context.Context, _ *mcp.CallToolRequest, input Gi
 		return nil, GitDiffOutput{}, err
 	}
 	stats := parseStatLine(lastLine(string(statOut)))
+
+	// Limit and process untracked files
+	const maxUntracked = 50
+	untrackedCount := len(untrackedFiles)
+	untrackedOmitted := false
+	var allUntrackedFiles []string
+	if untrackedCount > maxUntracked {
+		allUntrackedFiles = untrackedFiles
+		untrackedFiles = untrackedFiles[:maxUntracked]
+		untrackedOmitted = true
+	} else {
+		allUntrackedFiles = untrackedFiles
+	}
+
+	type untrackedDiff struct {
+		filePath   string
+		diffText   string
+		insertions int
+	}
+
+	var untrackedDiffs []untrackedDiff
+	for _, file := range untrackedFiles {
+		diffTextBytes, err := runner.RunGitDiffNoIndex(ctx, repoPath, file)
+		if err != nil {
+			continue
+		}
+		diffText := string(diffTextBytes)
+		insertions := 0
+		lines := splitLines(diffText)
+		for _, line := range lines {
+			if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++ ") {
+				insertions++
+			}
+		}
+		untrackedDiffs = append(untrackedDiffs, untrackedDiff{
+			filePath:   file,
+			diffText:   diffText,
+			insertions: insertions,
+		})
+
+		stats.FilesChanged++
+		stats.Insertions += insertions
+	}
 
 	// If stat-only, return early.
 	if input.Stat {
@@ -200,17 +264,19 @@ func (h *handlers) gitDiff(ctx context.Context, _ *mcp.CallToolRequest, input Gi
 		return nil, GitDiffOutput{}, err
 	}
 
-	var omitted *Omitted
 	diffStr := string(diffOut)
 
-	if len(diffOut) > maxOutputBytes {
-		// Truncate to byte limit, preserving whole lines.
-		truncated := diffStr[:maxOutputBytes]
-		if idx := strings.LastIndex(truncated, "\n"); idx >= 0 {
-			truncated = truncated[:idx+1]
+	// Append untracked diffs to diffStr
+	for _, ud := range untrackedDiffs {
+		if diffStr != "" && !strings.HasSuffix(diffStr, "\n") {
+			diffStr += "\n"
 		}
-		diffStr = truncated
+		diffStr += ud.diffText
+	}
 
+	var omitted *Omitted
+
+	if len(diffStr) > maxOutputBytes || untrackedOmitted {
 		// Get list of affected files.
 		nameArgs := append([]string{"diff", "--name-only"}, rangeArgs...)
 		if input.Path != "" {
@@ -219,9 +285,30 @@ func (h *handlers) gitDiff(ctx context.Context, _ *mcp.CallToolRequest, input Gi
 		nameOut, _ := runner.RunGit(ctx, repoPath, nameArgs...)
 		affectedFiles := nonEmpty(splitLines(string(nameOut)))
 
+		// Append all processed untracked files to affectedFiles
+		for _, file := range allUntrackedFiles {
+			affectedFiles = append(affectedFiles, file)
+		}
+
+		reason := "diff exceeds 100 KB limit"
+		if len(diffStr) > maxOutputBytes {
+			// Truncate to byte limit, preserving whole lines.
+			truncated := diffStr[:maxOutputBytes]
+			if idx := strings.LastIndex(truncated, "\n"); idx >= 0 {
+				truncated = truncated[:idx+1]
+			}
+			diffStr = truncated
+
+			if untrackedOmitted {
+				reason = fmt.Sprintf("diff exceeds 100 KB limit; too many untracked files (showing diffs for first %d of %d)", maxUntracked, untrackedCount)
+			}
+		} else if untrackedOmitted {
+			reason = fmt.Sprintf("too many untracked files (showing diffs for first %d of %d)", maxUntracked, untrackedCount)
+		}
+
 		omitted = &Omitted{
 			Truncated:     true,
-			Reason:        "diff exceeds 100 KB limit",
+			Reason:        reason,
 			AffectedFiles: affectedFiles,
 		}
 	}
