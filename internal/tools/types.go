@@ -191,11 +191,11 @@ type GitStatusInput struct {
 }
 
 type GitStatusOutput struct {
-	Branch   string   `json:"branch"`
-	Ahead    int      `json:"ahead"`
-	Behind   int      `json:"behind"`
-	Staged   []string `json:"staged"`
-	Modified []string `json:"modified"`
+	Branch    string   `json:"branch"`
+	Ahead     int      `json:"ahead"`
+	Behind    int      `json:"behind"`
+	Staged    []string `json:"staged"`
+	Modified  []string `json:"modified"`
 	Untracked []string `json:"untracked"`
 }
 
@@ -293,6 +293,10 @@ type CollectReviewBundleOutput struct {
 type ResearchInput struct {
 	Question string   `json:"question" jsonschema:"the question to research about the codebase; be specific with module names or file paths if known"`
 	Context  []string `json:"context,omitempty" jsonschema:"file paths to previous research results to build upon"`
+}
+
+type ResearchOutput struct {
+	Answer string `json:"answer"`
 }
 
 // — shared helpers —

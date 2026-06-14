@@ -280,7 +280,6 @@ func plural(n int) string {
 	return "s"
 }
 
-
 // showCommitDetail runs git show on a single commit and returns structured details.
 func (h *handlers) showCommitDetail(ctx context.Context, repoPath, ref string) ReviewCommitDetail {
 	detail := ReviewCommitDetail{Hash: ref}
@@ -363,13 +362,13 @@ func ensureResearcherAgent() error {
 	return os.WriteFile(path, researcherAgentMD, 0o644)
 }
 
-func (h *handlers) research(ctx context.Context, _ *mcp.CallToolRequest, input ResearchInput) (*mcp.CallToolResult, struct{}, error) {
+func (h *handlers) research(ctx context.Context, _ *mcp.CallToolRequest, input ResearchInput) (*mcp.CallToolResult, ResearchOutput, error) {
 	if input.Question == "" {
-		return nil, struct{}{}, fmt.Errorf("question is required")
+		return nil, ResearchOutput{}, fmt.Errorf("question is required")
 	}
 
 	if err := ensureResearcherAgent(); err != nil {
-		return nil, struct{}{}, fmt.Errorf("install agent: %w", err)
+		return nil, ResearchOutput{}, fmt.Errorf("install agent: %w", err)
 	}
 
 	prompt := input.Question
@@ -383,13 +382,13 @@ func (h *handlers) research(ctx context.Context, _ *mcp.CallToolRequest, input R
 
 	out, err := runner.RunCommandWithTimeout(ctx, researchTimeout, h.workspace, "opencode", "run", "--agent", "researcher", prompt)
 	if err != nil {
-		return nil, struct{}{}, fmt.Errorf("opencode: %w", err)
+		return nil, ResearchOutput{}, fmt.Errorf("opencode: %w", err)
 	}
+	answer := string(out)
 
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
-			&mcp.TextContent{Text: string(out)},
+			&mcp.TextContent{Text: answer},
 		},
-	}, struct{}{}, nil
+	}, ResearchOutput{Answer: answer}, nil
 }
-
