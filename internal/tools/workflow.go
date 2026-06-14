@@ -407,9 +407,27 @@ func (h *handlers) research(ctx context.Context, _ *mcp.CallToolRequest, input R
 	}
 	answer := string(out)
 
+	savedPath, saveErr := saveResearchResult(h.workspace, answer)
+	if saveErr == nil {
+		answer += "\n\n---\nSaved to: " + savedPath
+	}
+
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: answer},
 		},
 	}, nil, nil
+}
+
+func saveResearchResult(workspace, content string) (string, error) {
+	dir := filepath.Join(workspace, ".opencode", "research")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	ts := time.Now().Format("20060102-150405")
+	out := filepath.Join(dir, ts+".md")
+	if err := os.WriteFile(out, []byte(content), 0o644); err != nil {
+		return "", err
+	}
+	return out, nil
 }
