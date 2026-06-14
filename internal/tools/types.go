@@ -293,6 +293,7 @@ type CollectReviewBundleOutput struct {
 type ResearchInput struct {
 	Question string   `json:"question" jsonschema:"the question to research about the codebase; be specific with module names or file paths if known"`
 	Context  []string `json:"context,omitempty" jsonschema:"file paths to previous research results to build upon"`
+	Repo     string   `json:"repo,omitempty"    jsonschema:"optional name of the repository to scope research to; if omitted, researches from workspace root"`
 }
 
 // — shared helpers —

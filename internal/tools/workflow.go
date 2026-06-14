@@ -372,12 +372,33 @@ func (h *handlers) research(ctx context.Context, _ *mcp.CallToolRequest, input R
 	}
 
 	prompt := input.Question
+
 	if len(input.Context) > 0 {
 		var items string
 		for _, f := range input.Context {
 			items += "\n  - " + f
 		}
-		prompt = "First read these for context from previous investigations:" + items + "\n\nUsing that as a starting point, investigate and answer: " + input.Question
+		prompt = fmt.Sprintf("First read these for context from previous investigations:%s\n\nUsing that as a starting point, investigate and answer: %s", items, prompt)
+	}
+
+	if input.Repo != "" {
+		repoPath, err := sandbox.ValidateRepo(h.workspace, input.Repo)
+		if err != nil {
+			return nil, nil, err
+		}
+		prompt = fmt.Sprintf("The user wants this research scoped to the repository %q at %q.\nThe information needed to answer should be in that repository.\n\n%s", input.Repo, repoPath, prompt)
+	} else {
+		var repoMap strings.Builder
+		repoMap.WriteString("This workspace contains multiple Git repositories nested under the root:\n")
+		for _, r := range h.discoverRepos() {
+			name := r.name
+			if name == "." {
+				name = ". (root)"
+			}
+			repoMap.WriteString(fmt.Sprintf("- %s: located at %s\n", name, r.path))
+		}
+		repoMap.WriteString("\nYou are running in the parent folder of these individual repositories. Tools that rely on the current Git repository may miss files inside nested repositories when run from the workspace root. If Glob cannot find what you need, use rg or another search method that does not depend on the current Git repository.\n\n")
+		prompt = repoMap.String() + prompt
 	}
 
 	out, err := runner.RunCommandWithTimeout(ctx, researchTimeout, h.workspace, "opencode", "run", "--agent", "researcher", prompt)
