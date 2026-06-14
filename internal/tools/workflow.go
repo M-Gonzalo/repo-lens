@@ -373,8 +373,12 @@ func (h *handlers) research(ctx context.Context, _ *mcp.CallToolRequest, input R
 	}
 
 	prompt := input.Question
-	if input.Context != "" {
-		prompt = "First read " + input.Context + " for context from a previous investigation. Then answer: " + input.Question
+	if len(input.Context) > 0 {
+		var items string
+		for _, f := range input.Context {
+			items += "\n  - " + f
+		}
+		prompt = "First read these for context from previous investigations:" + items + "\n\nUsing that as a starting point, investigate and answer: " + input.Question
 	}
 
 	out, err := runner.RunCommandWithTimeout(ctx, researchTimeout, h.workspace, "opencode", "run", "--agent", "researcher", prompt)
