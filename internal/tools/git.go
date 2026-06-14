@@ -159,18 +159,23 @@ func (h *handlers) gitDiff(ctx context.Context, _ *mcp.CallToolRequest, input Gi
 		return nil, GitDiffOutput{}, err
 	}
 
-	base := input.Base
-	if base == "" {
-		base = "HEAD~1"
+	var rangeArgs []string
+	if input.Dirty {
+		rangeArgs = []string{"HEAD"}
+	} else {
+		base := input.Base
+		if base == "" {
+			base = "HEAD~1"
+		}
+		target := input.Target
+		if target == "" {
+			target = "HEAD"
+		}
+		rangeArgs = []string{base + ".." + target}
 	}
-	target := input.Target
-	if target == "" {
-		target = "HEAD"
-	}
-	rangeStr := base + ".." + target
 
 	// --- stat ---
-	statArgs := []string{"diff", "--stat", rangeStr}
+	statArgs := append([]string{"diff", "--stat"}, rangeArgs...)
 	if input.Path != "" {
 		statArgs = append(statArgs, "--", input.Path)
 	}
@@ -186,7 +191,7 @@ func (h *handlers) gitDiff(ctx context.Context, _ *mcp.CallToolRequest, input Gi
 	}
 
 	// --- diff content ---
-	diffArgs := []string{"diff", rangeStr}
+	diffArgs := append([]string{"diff"}, rangeArgs...)
 	if input.Path != "" {
 		diffArgs = append(diffArgs, "--", input.Path)
 	}
@@ -207,7 +212,7 @@ func (h *handlers) gitDiff(ctx context.Context, _ *mcp.CallToolRequest, input Gi
 		diffStr = truncated
 
 		// Get list of affected files.
-		nameArgs := []string{"diff", "--name-only", rangeStr}
+		nameArgs := append([]string{"diff", "--name-only"}, rangeArgs...)
 		if input.Path != "" {
 			nameArgs = append(nameArgs, "--", input.Path)
 		}

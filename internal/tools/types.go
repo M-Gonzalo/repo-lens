@@ -105,6 +105,7 @@ type GitDiffInput struct {
 	Repo   string `json:"repo"            jsonschema:"name of the repository under workspace"`
 	Base   string `json:"base,omitempty"   jsonschema:"base ref; defaults to HEAD~1"`
 	Target string `json:"target,omitempty" jsonschema:"target ref; defaults to HEAD"`
+	Dirty  bool   `json:"dirty,omitempty"  jsonschema:"diff the working tree against HEAD (uncommitted changes); ignores base and target"`
 	Path   string `json:"path,omitempty"   jsonschema:"restrict diff to this path"`
 	Stat   bool   `json:"stat,omitempty"   jsonschema:"return only the stat summary, not the full diff"`
 	Format string `json:"format,omitempty"   jsonschema:"Output format: 'text' (default) or 'json'"`
