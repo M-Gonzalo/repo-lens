@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const Timeout = 60 * time.Second
+const DefaultTimeout = 60 * time.Second
 
 var gitEnv = []string{
 	"GIT_OPTIONAL_LOCKS=0",
@@ -18,7 +18,7 @@ var gitEnv = []string{
 
 // RunGit runs git with the given args in repoPath.
 func RunGit(ctx context.Context, repoPath string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	ctx, cancel := context.WithTimeout(ctx, DefaultTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = repoPath
@@ -35,7 +35,7 @@ func RunGit(ctx context.Context, repoPath string, args ...string) ([]byte, error
 // RunRipgrep runs rg with the given args in searchPath.
 // Exit code 1 (no matches) is treated as success with empty output.
 func RunRipgrep(ctx context.Context, searchPath string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	ctx, cancel := context.WithTimeout(ctx, DefaultTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "rg", args...)
 	cmd.Dir = searchPath
@@ -51,9 +51,14 @@ func RunRipgrep(ctx context.Context, searchPath string, args ...string) ([]byte,
 	return stdout.Bytes(), nil
 }
 
-// RunCommand runs a specific external command (e.g. jv) with a timeout.
+// RunCommand runs a specific external command (e.g. jv) with the default timeout.
 func RunCommand(ctx context.Context, command string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	return RunCommandWithTimeout(ctx, DefaultTimeout, command, args...)
+}
+
+// RunCommandWithTimeout runs an external command with a caller-specified timeout.
+func RunCommandWithTimeout(ctx context.Context, timeout time.Duration, command string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, command, args...)
 	var stdout, stderr bytes.Buffer

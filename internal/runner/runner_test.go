@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // initGitRepo initialises a bare-minimum git repo in dir so git commands work.
@@ -180,3 +181,23 @@ func TestRunCommand_CancelledContext(t *testing.T) {
 		t.Fatal("expected error with cancelled context, got nil")
 	}
 }
+
+// --- RunCommandWithTimeout tests ---
+
+func TestRunCommandWithTimeout_CustomTimeout(t *testing.T) {
+	out, err := RunCommandWithTimeout(context.Background(), 5*time.Second, "echo", "custom-timeout")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(out) == 0 {
+		t.Error("expected non-empty output")
+	}
+}
+
+func TestRunCommandWithTimeout_ExceedsTimeout(t *testing.T) {
+	_, err := RunCommandWithTimeout(context.Background(), 100*time.Millisecond, "sleep", "10")
+	if err == nil {
+		t.Fatal("expected error when command exceeds timeout, got nil")
+	}
+}
+
