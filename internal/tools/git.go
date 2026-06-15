@@ -159,44 +159,18 @@ func (h *handlers) gitDiff(ctx context.Context, _ *mcp.CallToolRequest, input Gi
 		return nil, GitDiffOutput{}, err
 	}
 
-	var rangeArgs []string
-	if input.Dirty {
-		rangeArgs = []string{"HEAD"}
-	} else {
-		base := input.Base
-		if base == "" {
-			base = "HEAD~1"
-		}
-		target := input.Target
-		if target == "" {
-			target = "HEAD"
-		}
-		rangeArgs = []string{base + ".." + target}
+	base := input.Base
+	if base == "" {
+		base = "HEAD~1"
 	}
-
-	// Gather untracked files if dirty is true
-	var untrackedFiles []string
-	if input.Dirty {
-		statusArgs := []string{"status", "--porcelain=v2", "-uall"}
-		if input.Path != "" {
-			statusArgs = append(statusArgs, "--", input.Path)
-		}
-		statusOut, err := runner.RunGit(ctx, repoPath, statusArgs...)
-		if err == nil {
-			lines := splitLines(string(statusOut))
-			for _, line := range lines {
-				if strings.HasPrefix(line, "? ") {
-					untrackedFile := strings.TrimPrefix(line, "? ")
-					if _, err := sandbox.ValidatePath(h.workspace, repoPath, untrackedFile); err == nil {
-						untrackedFiles = append(untrackedFiles, untrackedFile)
-					}
-				}
-			}
-		}
+	target := input.Target
+	if target == "" {
+		target = "HEAD"
 	}
+	rangeArg := base + ".." + target
 
 	// --- stat ---
-	statArgs := append([]string{"diff", "--stat"}, rangeArgs...)
+	statArgs := []string{"diff", "--stat", rangeArg}
 	if input.Path != "" {
 		statArgs = append(statArgs, "--", input.Path)
 	}
@@ -206,56 +180,13 @@ func (h *handlers) gitDiff(ctx context.Context, _ *mcp.CallToolRequest, input Gi
 	}
 	stats := parseStatLine(lastLine(string(statOut)))
 
-	// Limit and process untracked files
-	const maxUntracked = 50
-	untrackedCount := len(untrackedFiles)
-	untrackedOmitted := false
-	var allUntrackedFiles []string
-	if untrackedCount > maxUntracked {
-		allUntrackedFiles = untrackedFiles
-		untrackedFiles = untrackedFiles[:maxUntracked]
-		untrackedOmitted = true
-	} else {
-		allUntrackedFiles = untrackedFiles
-	}
-
-	type untrackedDiff struct {
-		filePath   string
-		diffText   string
-		insertions int
-	}
-
-	var untrackedDiffs []untrackedDiff
-	for _, file := range untrackedFiles {
-		diffTextBytes, err := runner.RunGitDiffNoIndex(ctx, repoPath, file)
-		if err != nil {
-			continue
-		}
-		diffText := string(diffTextBytes)
-		insertions := 0
-		lines := splitLines(diffText)
-		for _, line := range lines {
-			if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++ ") {
-				insertions++
-			}
-		}
-		untrackedDiffs = append(untrackedDiffs, untrackedDiff{
-			filePath:   file,
-			diffText:   diffText,
-			insertions: insertions,
-		})
-
-		stats.FilesChanged++
-		stats.Insertions += insertions
-	}
-
 	// If stat-only, return early.
 	if input.Stat {
 		return nil, GitDiffOutput{Stats: stats}, nil
 	}
 
 	// --- diff content ---
-	diffArgs := append([]string{"diff"}, rangeArgs...)
+	diffArgs := []string{"diff", rangeArg}
 	if input.Path != "" {
 		diffArgs = append(diffArgs, "--", input.Path)
 	}
@@ -266,49 +197,25 @@ func (h *handlers) gitDiff(ctx context.Context, _ *mcp.CallToolRequest, input Gi
 
 	diffStr := string(diffOut)
 
-	// Append untracked diffs to diffStr
-	for _, ud := range untrackedDiffs {
-		if diffStr != "" && !strings.HasSuffix(diffStr, "\n") {
-			diffStr += "\n"
-		}
-		diffStr += ud.diffText
-	}
-
 	var omitted *Omitted
 
-	if len(diffStr) > maxOutputBytes || untrackedOmitted {
-		// Get list of affected files.
-		nameArgs := append([]string{"diff", "--name-only"}, rangeArgs...)
+	if len(diffStr) > maxOutputBytes {
+		nameArgs := []string{"diff", "--name-only", rangeArg}
 		if input.Path != "" {
 			nameArgs = append(nameArgs, "--", input.Path)
 		}
 		nameOut, _ := runner.RunGit(ctx, repoPath, nameArgs...)
 		affectedFiles := nonEmpty(splitLines(string(nameOut)))
 
-		// Append all processed untracked files to affectedFiles
-		for _, file := range allUntrackedFiles {
-			affectedFiles = append(affectedFiles, file)
+		truncated := diffStr[:maxOutputBytes]
+		if idx := strings.LastIndex(truncated, "\n"); idx >= 0 {
+			truncated = truncated[:idx+1]
 		}
-
-		reason := "diff exceeds 100 KB limit"
-		if len(diffStr) > maxOutputBytes {
-			// Truncate to byte limit, preserving whole lines.
-			truncated := diffStr[:maxOutputBytes]
-			if idx := strings.LastIndex(truncated, "\n"); idx >= 0 {
-				truncated = truncated[:idx+1]
-			}
-			diffStr = truncated
-
-			if untrackedOmitted {
-				reason = fmt.Sprintf("diff exceeds 100 KB limit; too many untracked files (showing diffs for first %d of %d)", maxUntracked, untrackedCount)
-			}
-		} else if untrackedOmitted {
-			reason = fmt.Sprintf("too many untracked files (showing diffs for first %d of %d)", maxUntracked, untrackedCount)
-		}
+		diffStr = truncated
 
 		omitted = &Omitted{
 			Truncated:     true,
-			Reason:        reason,
+			Reason:        "diff exceeds 100 KB limit",
 			AffectedFiles: affectedFiles,
 		}
 	}
@@ -955,6 +862,238 @@ func formatFileHistory(out FileHistoryOutput) string {
 		sb.WriteString(fmt.Sprintf("Date:   %s\n", entry.Date))
 		sb.WriteString(fmt.Sprintf("Stats:  +%d, -%d lines\n", entry.LinesAdded, entry.LinesRemoved))
 		sb.WriteString(fmt.Sprintf("Message: %s\n", entry.Message))
+	}
+	return sb.String()
+}
+
+// wip returns the current working-tree state: status summary + full diff against HEAD.
+func (h *handlers) wip(ctx context.Context, _ *mcp.CallToolRequest, input WipInput) (*mcp.CallToolResult, any, error) {
+	repoPath, err := sandbox.ValidateRepo(h.workspace, input.Repo)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// --- Status + untracked file discovery ---
+	statusArgs := []string{"status", "--porcelain=v2", "--branch", "-uall"}
+	if input.Path != "" {
+		statusArgs = append(statusArgs, "--", input.Path)
+	}
+	statusOut, err := runner.RunGit(ctx, repoPath, statusArgs...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var out WipOutput
+	var untrackedFiles []string
+	for _, line := range splitLines(string(statusOut)) {
+		switch {
+		case strings.HasPrefix(line, "# branch.head "):
+			out.Branch = strings.TrimPrefix(line, "# branch.head ")
+			if out.Branch == "(detached)" {
+				out.Branch = "HEAD"
+			}
+		case strings.HasPrefix(line, "# branch.ab "):
+			parts := strings.Fields(strings.TrimPrefix(line, "# branch.ab "))
+			if len(parts) >= 2 {
+				if n, err := strconv.Atoi(strings.TrimPrefix(parts[0], "+")); err == nil {
+					out.Ahead = n
+				}
+				if n, err := strconv.Atoi(strings.TrimPrefix(parts[1], "-")); err == nil {
+					out.Behind = n
+				}
+			}
+		case strings.HasPrefix(line, "1 "):
+			fields := strings.Fields(line)
+			if len(fields) < 9 {
+				continue
+			}
+			xy, filename := fields[1], fields[len(fields)-1]
+			if len(xy) >= 1 && xy[0] != '.' {
+				out.Staged = append(out.Staged, filename)
+			}
+			if len(xy) >= 2 && xy[1] != '.' {
+				out.Modified = append(out.Modified, filename)
+			}
+		case strings.HasPrefix(line, "2 "):
+			fields := strings.Fields(line)
+			if len(fields) < 10 {
+				continue
+			}
+			xy, combined := fields[1], fields[len(fields)-1]
+			filename := combined
+			if tabIdx := strings.IndexByte(combined, '\t'); tabIdx >= 0 {
+				filename = combined[:tabIdx]
+			}
+			if len(xy) >= 1 && xy[0] != '.' {
+				out.Staged = append(out.Staged, filename)
+			}
+			if len(xy) >= 2 && xy[1] != '.' {
+				out.Modified = append(out.Modified, filename)
+			}
+		case strings.HasPrefix(line, "? "):
+			f := strings.TrimPrefix(line, "? ")
+			if _, err := sandbox.ValidatePath(h.workspace, repoPath, f); err == nil {
+				untrackedFiles = append(untrackedFiles, f)
+			}
+		}
+	}
+	out.Untracked = untrackedFiles
+	if out.Staged == nil {
+		out.Staged = []string{}
+	}
+	if out.Modified == nil {
+		out.Modified = []string{}
+	}
+	if out.Untracked == nil {
+		out.Untracked = []string{}
+	}
+
+	// --- Stat ---
+	statArgs := []string{"diff", "--stat", "HEAD"}
+	if input.Path != "" {
+		statArgs = append(statArgs, "--", input.Path)
+	}
+	statOut, err := runner.RunGit(ctx, repoPath, statArgs...)
+	if err != nil {
+		return nil, nil, err
+	}
+	out.Stats = parseStatLine(lastLine(string(statOut)))
+
+	// Untracked file diffs
+	const maxUntracked = 50
+	untrackedCount := len(untrackedFiles)
+	untrackedOmitted := false
+	allUntrackedFiles := untrackedFiles
+	if untrackedCount > maxUntracked {
+		untrackedFiles = untrackedFiles[:maxUntracked]
+		untrackedOmitted = true
+	}
+
+	type untrackedDiff struct{ diffText string; insertions int }
+	var untrackedDiffs []untrackedDiff
+	for _, file := range untrackedFiles {
+		diffBytes, err := runner.RunGitDiffNoIndex(ctx, repoPath, file)
+		if err != nil {
+			continue
+		}
+		diffText := string(diffBytes)
+		insertions := 0
+		for _, l := range splitLines(diffText) {
+			if strings.HasPrefix(l, "+") && !strings.HasPrefix(l, "+++ ") {
+				insertions++
+			}
+		}
+		untrackedDiffs = append(untrackedDiffs, untrackedDiff{diffText, insertions})
+		out.Stats.FilesChanged++
+		out.Stats.Insertions += insertions
+	}
+
+	if input.Stat {
+		if input.Format == "json" {
+			return nil, out, nil
+		}
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: formatWip(out)}}}, nil, nil
+	}
+
+	// --- Diff ---
+	diffArgs := []string{"diff", "HEAD"}
+	if input.Path != "" {
+		diffArgs = append(diffArgs, "--", input.Path)
+	}
+	diffOut, err := runner.RunGit(ctx, repoPath, diffArgs...)
+	if err != nil {
+		return nil, nil, err
+	}
+	diffStr := string(diffOut)
+	for _, ud := range untrackedDiffs {
+		if diffStr != "" && !strings.HasSuffix(diffStr, "\n") {
+			diffStr += "\n"
+		}
+		diffStr += ud.diffText
+	}
+
+	if len(diffStr) > maxOutputBytes || untrackedOmitted {
+		nameArgs := []string{"diff", "--name-only", "HEAD"}
+		if input.Path != "" {
+			nameArgs = append(nameArgs, "--", input.Path)
+		}
+		nameOut, _ := runner.RunGit(ctx, repoPath, nameArgs...)
+		affectedFiles := append(nonEmpty(splitLines(string(nameOut))), allUntrackedFiles...)
+
+		reason := "diff exceeds 100 KB limit"
+		if len(diffStr) > maxOutputBytes {
+			truncated := diffStr[:maxOutputBytes]
+			if idx := strings.LastIndex(truncated, "\n"); idx >= 0 {
+				truncated = truncated[:idx+1]
+			}
+			diffStr = truncated
+			if untrackedOmitted {
+				reason = fmt.Sprintf("diff exceeds 100 KB limit; too many untracked files (showing diffs for first %d of %d)", maxUntracked, untrackedCount)
+			}
+		} else if untrackedOmitted {
+			reason = fmt.Sprintf("too many untracked files (showing diffs for first %d of %d)", maxUntracked, untrackedCount)
+		}
+		out.Omitted = &Omitted{Truncated: true, Reason: reason, AffectedFiles: affectedFiles}
+	}
+	out.Diff = diffStr
+
+	if input.Format == "json" {
+		return nil, out, nil
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: formatWip(out)}}}, nil, nil
+}
+
+func formatWip(out WipOutput) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("On branch %s\n", out.Branch))
+	if out.Ahead > 0 || out.Behind > 0 {
+		sb.WriteString(fmt.Sprintf("Your branch is ahead by %d commits and behind by %d commits.\n", out.Ahead, out.Behind))
+	}
+	sb.WriteString("\n")
+	if len(out.Staged) > 0 {
+		sb.WriteString("Changes to be committed:\n")
+		for _, f := range out.Staged {
+			sb.WriteString(fmt.Sprintf("  staged:    %s\n", f))
+		}
+		sb.WriteString("\n")
+	}
+	if len(out.Modified) > 0 {
+		sb.WriteString("Changes not staged for commit:\n")
+		for _, f := range out.Modified {
+			sb.WriteString(fmt.Sprintf("  modified:  %s\n", f))
+		}
+		sb.WriteString("\n")
+	}
+	if len(out.Untracked) > 0 {
+		sb.WriteString("Untracked files:\n")
+		for _, f := range out.Untracked {
+			sb.WriteString(fmt.Sprintf("  untracked: %s\n", f))
+		}
+		sb.WriteString("\n")
+	}
+	if len(out.Staged) == 0 && len(out.Modified) == 0 && len(out.Untracked) == 0 {
+		sb.WriteString("nothing to commit, working tree clean\n")
+		return sb.String()
+	}
+	if out.Omitted != nil && out.Omitted.Truncated {
+		sb.WriteString(fmt.Sprintf("[Warning: Diff truncated. Reason: %s]\n", out.Omitted.Reason))
+		if len(out.Omitted.AffectedFiles) > 0 {
+			sb.WriteString("Files affected:\n")
+			for _, f := range out.Omitted.AffectedFiles {
+				sb.WriteString(fmt.Sprintf("- %s\n", f))
+			}
+		}
+		sb.WriteString("\n")
+	}
+	sb.WriteString(fmt.Sprintf("Stats: %d files changed, +%d insertions, -%d deletions\n\n",
+		out.Stats.FilesChanged, out.Stats.Insertions, out.Stats.Deletions))
+	if out.Diff != "" {
+		sb.WriteString("```diff\n")
+		sb.WriteString(out.Diff)
+		if !strings.HasSuffix(out.Diff, "\n") {
+			sb.WriteString("\n")
+		}
+		sb.WriteString("```\n")
 	}
 	return sb.String()
 }

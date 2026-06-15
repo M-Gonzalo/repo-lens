@@ -102,13 +102,12 @@ type GitLogOutput struct {
 // — gitDiff —
 
 type GitDiffInput struct {
-	Repo   string `json:"repo"            jsonschema:"name of the repository under workspace"`
+	Repo   string `json:"repo"             jsonschema:"name of the repository under workspace"`
 	Base   string `json:"base,omitempty"   jsonschema:"base ref; defaults to HEAD~1"`
 	Target string `json:"target,omitempty" jsonschema:"target ref; defaults to HEAD"`
-	Dirty  bool   `json:"dirty,omitempty"  jsonschema:"diff the working tree against HEAD (uncommitted changes); ignores base and target"`
 	Path   string `json:"path,omitempty"   jsonschema:"restrict diff to this path"`
 	Stat   bool   `json:"stat,omitempty"   jsonschema:"return only the stat summary, not the full diff"`
-	Format string `json:"format,omitempty"   jsonschema:"Output format: 'text' (default) or 'json'"`
+	Format string `json:"format,omitempty" jsonschema:"Output format: 'text' (default) or 'json'"`
 }
 
 type DiffStats struct {
@@ -294,6 +293,27 @@ type ResearchInput struct {
 	Question string   `json:"question" jsonschema:"the question to research about the codebase; be specific with module names or file paths if known"`
 	Context  []string `json:"context,omitempty" jsonschema:"file paths to previous research results to build upon"`
 	Repo     string   `json:"repo,omitempty"    jsonschema:"optional name of the repository to scope research to; if omitted, researches from workspace root"`
+}
+
+// — wip —
+
+type WipInput struct {
+	Repo   string `json:"repo"             jsonschema:"name of the repository under workspace"`
+	Path   string `json:"path,omitempty"   jsonschema:"restrict diff to this path"`
+	Stat   bool   `json:"stat,omitempty"   jsonschema:"return only the stat summary, not the full diff"`
+	Format string `json:"format,omitempty" jsonschema:"Output format: 'text' (default) or 'json'"`
+}
+
+type WipOutput struct {
+	Branch    string    `json:"branch"`
+	Ahead     int       `json:"ahead"`
+	Behind    int       `json:"behind"`
+	Staged    []string  `json:"staged"`
+	Modified  []string  `json:"modified"`
+	Untracked []string  `json:"untracked"`
+	Diff      string    `json:"diff,omitempty"`
+	Stats     DiffStats `json:"stats"`
+	Omitted   *Omitted  `json:"omitted,omitempty"`
 }
 
 // — shared helpers —

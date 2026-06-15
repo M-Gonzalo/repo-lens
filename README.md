@@ -40,7 +40,8 @@ The workspace is the root directory that contains your git repositories. repo-le
 | `search` | ripgrep across tracked files in a repo |
 | `readFileAtRef` | Read a file at any git ref (time machine) |
 | `gitLog` | Commit history with filtering and pagination |
-| `gitDiff` | Diff between two refs, with stat summary option. Use `dirty: true` to diff the working tree against HEAD (all uncommitted changes including untracked files; ignores `base`/`target`). |
+| `gitDiff` | Diff between two committed refs, with stat summary option |
+| `wip` | All uncommitted working-tree changes: branch status (ahead/behind, staged/modified/untracked) + full diff against HEAD including untracked files |
 | `gitShow` | Full details of a single commit |
 | `gitBlame` | Line-by-line authorship |
 | `gitBranches` | List local or remote branches |

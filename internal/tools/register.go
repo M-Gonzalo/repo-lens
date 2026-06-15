@@ -38,6 +38,11 @@ func Register(s *mcp.Server, workspace string) {
 	}, h.gitDiff)
 
 	mcp.AddTool(s, &mcp.Tool{
+		Name:        "wip",
+		Description: "Show all uncommitted changes in the working tree: branch status (ahead/behind, staged, modified, untracked files) plus the full diff against HEAD including untracked files. Use stat:true for a summary without the diff.",
+	}, h.wip)
+
+	mcp.AddTool(s, &mcp.Tool{
 		Name:        "gitShow",
 		Description: "Show full details of a single commit: author, date, message, and diff. Use path to scope the diff to a single file.",
 	}, h.gitShow)

@@ -54,9 +54,8 @@ Before using any other tool, call `listRepos` to discover what repos exist and t
 ---
 
 ### `gitDiff`
-**When**: You want to see what changed between two points, or what's currently uncommitted in the working tree.
+**When**: You want to see what changed between two committed refs.
 **Key params**:
-- `dirty: true` — diff the working tree against HEAD; shows all uncommitted changes including untracked files. **Ignores `base` and `target`.** Use this to see what's in progress before it's committed.
 - `base` — default `HEAD~1`; can be a branch name, commit hash, or tag
 - `target` — default `HEAD`
 - `stat: true` — returns only the summary (files changed, insertions, deletions) without the full diff
@@ -64,6 +63,18 @@ Before using any other tool, call `listRepos` to discover what repos exist and t
 - `format` — output format: `"text"` (default) or `"json"`
 
 **Pagination**: If `omitted.truncated` is true, use `path=` with each file from `omitted.affectedFiles` to fetch individual file diffs.
+
+---
+
+### `wip`
+**When**: You want to see what's currently in progress — uncommitted changes not yet in any commit.
+**Returns**: Branch name, ahead/behind counts, staged/modified/untracked file lists, and the full diff of all working-tree changes against HEAD (including untracked files).
+**Key params**:
+- `path` — scope to a specific file or directory
+- `stat: true` — return status summary and stats without the full diff
+- `format` — output format: `"text"` (default) or `"json"`
+
+**Pagination**: Same as `gitDiff` — use `path=` with files from `omitted.affectedFiles` if the diff is truncated.
 
 ---
 
