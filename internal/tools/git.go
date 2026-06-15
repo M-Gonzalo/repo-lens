@@ -19,6 +19,91 @@ import (
 // Example: " 3 files changed, 10 insertions(+), 2 deletions(-)"
 var statRe = regexp.MustCompile(`(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?`)
 
+// parsePorcelainV2 parses git status --porcelain=v2 [--branch] output into a GitStatusOutput.
+// Untracked paths are raw (not sandbox-validated) — callers that need validation must do it themselves.
+func parsePorcelainV2(lines []string) GitStatusOutput {
+	var out GitStatusOutput
+	for _, line := range lines {
+		switch {
+		case strings.HasPrefix(line, "# branch.head "):
+			out.Branch = strings.TrimPrefix(line, "# branch.head ")
+			if out.Branch == "(detached)" {
+				out.Branch = "HEAD"
+			}
+		case strings.HasPrefix(line, "# branch.ab "):
+			parts := strings.Fields(strings.TrimPrefix(line, "# branch.ab "))
+			if len(parts) >= 2 {
+				if n, err := strconv.Atoi(strings.TrimPrefix(parts[0], "+")); err == nil {
+					out.Ahead = n
+				}
+				if n, err := strconv.Atoi(strings.TrimPrefix(parts[1], "-")); err == nil {
+					out.Behind = n
+				}
+			}
+		case strings.HasPrefix(line, "1 "):
+			// Ordinary changed entry: 1 XY N... mode mode mode hash hash filename
+			fields := strings.Fields(line)
+			if len(fields) < 9 {
+				continue
+			}
+			xy, filename := fields[1], fields[len(fields)-1]
+			if len(xy) >= 1 && xy[0] != '.' {
+				out.Staged = append(out.Staged, filename)
+			}
+			if len(xy) >= 2 && xy[1] != '.' {
+				out.Modified = append(out.Modified, filename)
+			}
+		case strings.HasPrefix(line, "2 "):
+			// Renamed/copied entry: 2 XY N... mode mode mode hash hash R/C score new\told
+			fields := strings.Fields(line)
+			if len(fields) < 10 {
+				continue
+			}
+			xy, combined := fields[1], fields[len(fields)-1]
+			filename := combined
+			if tabIdx := strings.IndexByte(combined, '\t'); tabIdx >= 0 {
+				filename = combined[:tabIdx]
+			}
+			if len(xy) >= 1 && xy[0] != '.' {
+				out.Staged = append(out.Staged, filename)
+			}
+			if len(xy) >= 2 && xy[1] != '.' {
+				out.Modified = append(out.Modified, filename)
+			}
+		case strings.HasPrefix(line, "? "):
+			out.Untracked = append(out.Untracked, strings.TrimPrefix(line, "? "))
+		}
+	}
+	if out.Staged == nil {
+		out.Staged = []string{}
+	}
+	if out.Modified == nil {
+		out.Modified = []string{}
+	}
+	if out.Untracked == nil {
+		out.Untracked = []string{}
+	}
+	return out
+}
+
+// parseCommitMeta parses the output of git show --format=format:%H%n%an%n%aI%n%B into its fields.
+func parseCommitMeta(raw []byte) (hash, author, date, message string) {
+	lines := splitLines(strings.TrimLeft(string(raw), "\n"))
+	if len(lines) >= 1 {
+		hash = lines[0]
+	}
+	if len(lines) >= 2 {
+		author = lines[1]
+	}
+	if len(lines) >= 3 {
+		date = lines[2]
+	}
+	if len(lines) >= 4 {
+		message = strings.TrimRight(strings.Join(lines[3:], "\n"), "\n")
+	}
+	return
+}
+
 // parseStatLine extracts file/insertion/deletion counts from a git stat summary line.
 func parseStatLine(line string) DiffStats {
 	m := statRe.FindStringSubmatch(line)
@@ -43,7 +128,7 @@ func lastLine(s string) string {
 }
 
 // gitLog returns the commit history for a repository with flexible filtering.
-func (h *handlers) gitLog(ctx context.Context, _ *mcp.CallToolRequest, input GitLogInput) (*mcp.CallToolResult, GitLogOutput, error) {
+func (h *handlers) gitLog(ctx context.Context, _ *mcp.CallToolRequest, input GitLogInput) (*mcp.CallToolResult, any, error) {
 	repoPath, err := sandbox.ValidateRepo(h.workspace, input.Repo)
 	if err != nil {
 		return nil, GitLogOutput{}, err
@@ -149,11 +234,11 @@ func (h *handlers) gitLog(ctx context.Context, _ *mcp.CallToolRequest, input Git
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: textStr},
 		},
-	}, GitLogOutput{}, nil
+	}, nil, nil
 }
 
 // gitDiff returns the diff between two refs, optionally scoped to a path.
-func (h *handlers) gitDiff(ctx context.Context, _ *mcp.CallToolRequest, input GitDiffInput) (*mcp.CallToolResult, GitDiffOutput, error) {
+func (h *handlers) gitDiff(ctx context.Context, _ *mcp.CallToolRequest, input GitDiffInput) (*mcp.CallToolResult, any, error) {
 	repoPath, err := sandbox.ValidateRepo(h.workspace, input.Repo)
 	if err != nil {
 		return nil, GitDiffOutput{}, err
@@ -229,11 +314,11 @@ func (h *handlers) gitDiff(ctx context.Context, _ *mcp.CallToolRequest, input Gi
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: textStr},
 		},
-	}, GitDiffOutput{}, nil
+	}, nil, nil
 }
 
 // gitShow returns the full details of a single commit.
-func (h *handlers) gitShow(ctx context.Context, _ *mcp.CallToolRequest, input GitShowInput) (*mcp.CallToolResult, GitShowOutput, error) {
+func (h *handlers) gitShow(ctx context.Context, _ *mcp.CallToolRequest, input GitShowInput) (*mcp.CallToolResult, any, error) {
 	repoPath, err := sandbox.ValidateRepo(h.workspace, input.Repo)
 	if err != nil {
 		return nil, GitShowOutput{}, err
@@ -247,25 +332,11 @@ func (h *handlers) gitShow(ctx context.Context, _ *mcp.CallToolRequest, input Gi
 	// --- metadata ---
 	// Use %n (literal newline) so each field is on its own line, avoiding
 	// the ambiguity of embedding %B (multi-line) inside a \x1f-delimited format.
-	metaArgs := []string{"show", "--no-patch", "--format=format:%H%n%an%n%aI%n%B", ref}
-	metaOut, err := runner.RunGit(ctx, repoPath, metaArgs...)
+	metaOut, err := runner.RunGit(ctx, repoPath, "show", "--no-patch", "--format=format:%H%n%an%n%aI%n%B", ref)
 	if err != nil {
 		return nil, GitShowOutput{}, err
 	}
-	metaLines := splitLines(strings.TrimLeft(string(metaOut), "\n"))
-	var hash, author, date, message string
-	if len(metaLines) >= 1 {
-		hash = metaLines[0]
-	}
-	if len(metaLines) >= 2 {
-		author = metaLines[1]
-	}
-	if len(metaLines) >= 3 {
-		date = metaLines[2]
-	}
-	if len(metaLines) >= 4 {
-		message = strings.TrimRight(strings.Join(metaLines[3:], "\n"), "\n")
-	}
+	hash, author, date, message := parseCommitMeta(metaOut)
 
 	// --- stat ---
 	statArgs := []string{"show", "--stat", "--format=", ref}
@@ -330,11 +401,11 @@ func (h *handlers) gitShow(ctx context.Context, _ *mcp.CallToolRequest, input Gi
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: textStr},
 		},
-	}, GitShowOutput{}, nil
+	}, nil, nil
 }
 
 // gitBlame returns line-by-line authorship for a file, optionally restricted to a range.
-func (h *handlers) gitBlame(ctx context.Context, _ *mcp.CallToolRequest, input GitBlameInput) (*mcp.CallToolResult, GitBlameOutput, error) {
+func (h *handlers) gitBlame(ctx context.Context, _ *mcp.CallToolRequest, input GitBlameInput) (*mcp.CallToolResult, any, error) {
 	repoPath, err := sandbox.ValidateRepo(h.workspace, input.Repo)
 	if err != nil {
 		return nil, GitBlameOutput{}, err
@@ -425,7 +496,7 @@ func (h *handlers) gitBlame(ctx context.Context, _ *mcp.CallToolRequest, input G
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: textStr},
 		},
-	}, GitBlameOutput{}, nil
+	}, nil, nil
 }
 
 // isHexString returns true if all bytes in s are valid lowercase/uppercase hex digits.
@@ -439,7 +510,7 @@ func isHexString(s string) bool {
 }
 
 // gitBranches lists local or remote-tracking branches.
-func (h *handlers) gitBranches(ctx context.Context, _ *mcp.CallToolRequest, input GitBranchesInput) (*mcp.CallToolResult, GitBranchesOutput, error) {
+func (h *handlers) gitBranches(ctx context.Context, _ *mcp.CallToolRequest, input GitBranchesInput) (*mcp.CallToolResult, any, error) {
 	repoPath, err := sandbox.ValidateRepo(h.workspace, input.Repo)
 	if err != nil {
 		return nil, GitBranchesOutput{}, err
@@ -488,7 +559,7 @@ func (h *handlers) gitBranches(ctx context.Context, _ *mcp.CallToolRequest, inpu
 }
 
 // gitStatus returns the working-tree status of a repository.
-func (h *handlers) gitStatus(ctx context.Context, _ *mcp.CallToolRequest, input GitStatusInput) (*mcp.CallToolResult, GitStatusOutput, error) {
+func (h *handlers) gitStatus(ctx context.Context, _ *mcp.CallToolRequest, input GitStatusInput) (*mcp.CallToolResult, any, error) {
 	repoPath, err := sandbox.ValidateRepo(h.workspace, input.Repo)
 	if err != nil {
 		return nil, GitStatusOutput{}, err
@@ -499,76 +570,7 @@ func (h *handlers) gitStatus(ctx context.Context, _ *mcp.CallToolRequest, input 
 		return nil, GitStatusOutput{}, err
 	}
 
-	var out GitStatusOutput
-	lines := splitLines(string(raw))
-	for _, line := range lines {
-		switch {
-		case strings.HasPrefix(line, "# branch.head "):
-			out.Branch = strings.TrimPrefix(line, "# branch.head ")
-			if out.Branch == "(detached)" {
-				out.Branch = "HEAD"
-			}
-		case strings.HasPrefix(line, "# branch.ab "):
-			// Format: "+N -M"
-			rest := strings.TrimPrefix(line, "# branch.ab ")
-			parts := strings.Fields(rest)
-			if len(parts) >= 2 {
-				if n, err := strconv.Atoi(strings.TrimPrefix(parts[0], "+")); err == nil {
-					out.Ahead = n
-				}
-				if n, err := strconv.Atoi(strings.TrimPrefix(parts[1], "-")); err == nil {
-					out.Behind = n
-				}
-			}
-		case strings.HasPrefix(line, "1 "):
-			// Ordinary changed entry.
-			// Format: 1 XY N... mode mode mode hash hash filename
-			fields := strings.Fields(line)
-			if len(fields) < 9 {
-				continue
-			}
-			xy := fields[1]
-			filename := fields[len(fields)-1]
-			if len(xy) >= 1 && xy[0] != '.' {
-				out.Staged = append(out.Staged, filename)
-			}
-			if len(xy) >= 2 && xy[1] != '.' {
-				out.Modified = append(out.Modified, filename)
-			}
-		case strings.HasPrefix(line, "2 "):
-			// Renamed/copied entry.
-			// Format: 2 XY N... mode mode mode hash hash R/C score new\told
-			fields := strings.Fields(line)
-			if len(fields) < 10 {
-				continue
-			}
-			xy := fields[1]
-			// Last field is "newpath\toldpath" — take part before tab.
-			combined := fields[len(fields)-1]
-			filename := combined
-			if tabIdx := strings.IndexByte(combined, '\t'); tabIdx >= 0 {
-				filename = combined[:tabIdx]
-			}
-			if len(xy) >= 1 && xy[0] != '.' {
-				out.Staged = append(out.Staged, filename)
-			}
-			if len(xy) >= 2 && xy[1] != '.' {
-				out.Modified = append(out.Modified, filename)
-			}
-		case strings.HasPrefix(line, "? "):
-			out.Untracked = append(out.Untracked, strings.TrimPrefix(line, "? "))
-		}
-	}
-
-	if out.Staged == nil {
-		out.Staged = []string{}
-	}
-	if out.Modified == nil {
-		out.Modified = []string{}
-	}
-	if out.Untracked == nil {
-		out.Untracked = []string{}
-	}
+	out := parsePorcelainV2(splitLines(string(raw)))
 	if input.Format == "json" {
 		return nil, out, nil
 	}
@@ -577,11 +579,11 @@ func (h *handlers) gitStatus(ctx context.Context, _ *mcp.CallToolRequest, input 
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: textStr},
 		},
-	}, GitStatusOutput{}, nil
+	}, nil, nil
 }
 
 // fileHistory returns a compact changelog for a single file.
-func (h *handlers) fileHistory(ctx context.Context, _ *mcp.CallToolRequest, input FileHistoryInput) (*mcp.CallToolResult, FileHistoryOutput, error) {
+func (h *handlers) fileHistory(ctx context.Context, _ *mcp.CallToolRequest, input FileHistoryInput) (*mcp.CallToolResult, any, error) {
 	repoPath, err := sandbox.ValidateRepo(h.workspace, input.Repo)
 	if err != nil {
 		return nil, FileHistoryOutput{}, err
@@ -693,7 +695,7 @@ func (h *handlers) fileHistory(ctx context.Context, _ *mcp.CallToolRequest, inpu
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: textStr},
 		},
-	}, FileHistoryOutput{}, nil
+	}, nil, nil
 }
 
 // parseNumstatField parses a numstat added/removed field.
@@ -704,166 +706,6 @@ func parseNumstatField(s string) (int, error) {
 		return 0, nil
 	}
 	return strconv.Atoi(s)
-}
-
-func formatGitLog(out GitLogOutput) string {
-	var sb strings.Builder
-	if out.Omitted != nil && out.Omitted.Truncated {
-		sb.WriteString(fmt.Sprintf("[Warning: Commit list truncated. Reason: %s]\n\n", out.Omitted.Reason))
-	}
-	for i, c := range out.Commits {
-		if i > 0 {
-			sb.WriteString("\n")
-		}
-		sb.WriteString(fmt.Sprintf("commit %s (%s)\n", c.Hash, c.ShortHash))
-		sb.WriteString(fmt.Sprintf("Author: %s\n", c.Author))
-		sb.WriteString(fmt.Sprintf("Date:   %s\n\n", c.Date))
-		sb.WriteString(fmt.Sprintf("    %s\n", c.Message))
-		if len(c.FilesChanged) > 0 {
-			sb.WriteString("\nFiles Changed:\n")
-			for _, f := range c.FilesChanged {
-				sb.WriteString(fmt.Sprintf("  %s\n", f))
-			}
-		}
-	}
-	return sb.String()
-}
-
-func formatGitDiff(out GitDiffOutput) string {
-	var sb strings.Builder
-	if out.Omitted != nil && out.Omitted.Truncated {
-		sb.WriteString(fmt.Sprintf("[Warning: Diff truncated. Reason: %s]\n", out.Omitted.Reason))
-		if len(out.Omitted.AffectedFiles) > 0 {
-			sb.WriteString("Files affected:\n")
-			for _, f := range out.Omitted.AffectedFiles {
-				sb.WriteString(fmt.Sprintf("- %s\n", f))
-			}
-			sb.WriteString("\n")
-		}
-	}
-
-	sb.WriteString(fmt.Sprintf("Stats: %d files changed, +%d insertions, -%d deletions\n\n",
-		out.Stats.FilesChanged, out.Stats.Insertions, out.Stats.Deletions))
-
-	if out.Diff != "" {
-		sb.WriteString("```diff\n")
-		sb.WriteString(out.Diff)
-		if !strings.HasSuffix(out.Diff, "\n") {
-			sb.WriteString("\n")
-		}
-		sb.WriteString("```\n")
-	}
-	return sb.String()
-}
-
-func formatGitShow(out GitShowOutput) string {
-	var sb strings.Builder
-	if out.Omitted != nil && out.Omitted.Truncated {
-		sb.WriteString(fmt.Sprintf("[Warning: Diff truncated. Reason: %s]\n", out.Omitted.Reason))
-		if len(out.Omitted.AffectedFiles) > 0 {
-			sb.WriteString("Files affected:\n")
-			for _, f := range out.Omitted.AffectedFiles {
-				sb.WriteString(fmt.Sprintf("- %s\n", f))
-			}
-			sb.WriteString("\n")
-		}
-	}
-
-	sb.WriteString(fmt.Sprintf("commit %s\n", out.Hash))
-	sb.WriteString(fmt.Sprintf("Author: %s\n", out.Author))
-	sb.WriteString(fmt.Sprintf("Date:   %s\n\n", out.Date))
-	sb.WriteString(fmt.Sprintf("    %s\n\n", out.Message))
-
-	sb.WriteString(fmt.Sprintf("Stats: %d files changed, +%d insertions, -%d deletions\n\n",
-		out.Stats.FilesChanged, out.Stats.Insertions, out.Stats.Deletions))
-
-	if out.Diff != "" {
-		sb.WriteString("```diff\n")
-		sb.WriteString(out.Diff)
-		if !strings.HasSuffix(out.Diff, "\n") {
-			sb.WriteString("\n")
-		}
-		sb.WriteString("```\n")
-	}
-	return sb.String()
-}
-
-func formatGitBlame(out GitBlameOutput) string {
-	var sb strings.Builder
-	if out.Omitted != nil && out.Omitted.Truncated {
-		sb.WriteString(fmt.Sprintf("[Warning: Blame output truncated. Reason: %s]\n\n", out.Omitted.Reason))
-	}
-	for _, entry := range out.Entries {
-		shortHash := entry.CommitHash
-		if len(shortHash) > 8 {
-			shortHash = shortHash[:8]
-		}
-		sb.WriteString(fmt.Sprintf("%s (%s %s %d) %s\n",
-			shortHash,
-			entry.Author,
-			entry.Date,
-			entry.Line,
-			entry.Content,
-		))
-	}
-	return sb.String()
-}
-
-func formatGitStatus(out GitStatusOutput) string {
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("On branch %s\n", out.Branch))
-	if out.Ahead > 0 || out.Behind > 0 {
-		sb.WriteString(fmt.Sprintf("Your branch is ahead by %d commits and behind by %d commits.\n", out.Ahead, out.Behind))
-	}
-	sb.WriteString("\n")
-
-	if len(out.Staged) > 0 {
-		sb.WriteString("Changes to be committed:\n")
-		for _, f := range out.Staged {
-			sb.WriteString(fmt.Sprintf("  staged:    %s\n", f))
-		}
-		sb.WriteString("\n")
-	}
-	if len(out.Modified) > 0 {
-		sb.WriteString("Changes not staged for commit:\n")
-		for _, f := range out.Modified {
-			sb.WriteString(fmt.Sprintf("  modified:  %s\n", f))
-		}
-		sb.WriteString("\n")
-	}
-	if len(out.Untracked) > 0 {
-		sb.WriteString("Untracked files:\n")
-		for _, f := range out.Untracked {
-			sb.WriteString(fmt.Sprintf("  untracked: %s\n", f))
-		}
-		sb.WriteString("\n")
-	}
-	if len(out.Staged) == 0 && len(out.Modified) == 0 && len(out.Untracked) == 0 {
-		sb.WriteString("nothing to commit, working tree clean\n")
-	}
-	return sb.String()
-}
-
-func formatFileHistory(out FileHistoryOutput) string {
-	var sb strings.Builder
-	if out.Omitted != nil && out.Omitted.Truncated {
-		sb.WriteString(fmt.Sprintf("[Warning: History truncated. Reason: %s]\n\n", out.Omitted.Reason))
-	}
-	for i, entry := range out.Entries {
-		if i > 0 {
-			sb.WriteString("\n")
-		}
-		shortHash := entry.Hash
-		if len(shortHash) > 7 {
-			shortHash = shortHash[:7]
-		}
-		sb.WriteString(fmt.Sprintf("commit %s\n", shortHash))
-		sb.WriteString(fmt.Sprintf("Author: %s\n", entry.Author))
-		sb.WriteString(fmt.Sprintf("Date:   %s\n", entry.Date))
-		sb.WriteString(fmt.Sprintf("Stats:  +%d, -%d lines\n", entry.LinesAdded, entry.LinesRemoved))
-		sb.WriteString(fmt.Sprintf("Message: %s\n", entry.Message))
-	}
-	return sb.String()
 }
 
 // wip returns the current working-tree state: status summary + full diff against HEAD.
@@ -883,67 +725,22 @@ func (h *handlers) wip(ctx context.Context, _ *mcp.CallToolRequest, input WipInp
 		return nil, nil, err
 	}
 
+	status := parsePorcelainV2(splitLines(string(statusOut)))
 	var out WipOutput
+	out.Branch = status.Branch
+	out.Ahead = status.Ahead
+	out.Behind = status.Behind
+	out.Staged = status.Staged
+	out.Modified = status.Modified
+
+	// Validate untracked paths against the sandbox before using them for diffs.
 	var untrackedFiles []string
-	for _, line := range splitLines(string(statusOut)) {
-		switch {
-		case strings.HasPrefix(line, "# branch.head "):
-			out.Branch = strings.TrimPrefix(line, "# branch.head ")
-			if out.Branch == "(detached)" {
-				out.Branch = "HEAD"
-			}
-		case strings.HasPrefix(line, "# branch.ab "):
-			parts := strings.Fields(strings.TrimPrefix(line, "# branch.ab "))
-			if len(parts) >= 2 {
-				if n, err := strconv.Atoi(strings.TrimPrefix(parts[0], "+")); err == nil {
-					out.Ahead = n
-				}
-				if n, err := strconv.Atoi(strings.TrimPrefix(parts[1], "-")); err == nil {
-					out.Behind = n
-				}
-			}
-		case strings.HasPrefix(line, "1 "):
-			fields := strings.Fields(line)
-			if len(fields) < 9 {
-				continue
-			}
-			xy, filename := fields[1], fields[len(fields)-1]
-			if len(xy) >= 1 && xy[0] != '.' {
-				out.Staged = append(out.Staged, filename)
-			}
-			if len(xy) >= 2 && xy[1] != '.' {
-				out.Modified = append(out.Modified, filename)
-			}
-		case strings.HasPrefix(line, "2 "):
-			fields := strings.Fields(line)
-			if len(fields) < 10 {
-				continue
-			}
-			xy, combined := fields[1], fields[len(fields)-1]
-			filename := combined
-			if tabIdx := strings.IndexByte(combined, '\t'); tabIdx >= 0 {
-				filename = combined[:tabIdx]
-			}
-			if len(xy) >= 1 && xy[0] != '.' {
-				out.Staged = append(out.Staged, filename)
-			}
-			if len(xy) >= 2 && xy[1] != '.' {
-				out.Modified = append(out.Modified, filename)
-			}
-		case strings.HasPrefix(line, "? "):
-			f := strings.TrimPrefix(line, "? ")
-			if _, err := sandbox.ValidatePath(h.workspace, repoPath, f); err == nil {
-				untrackedFiles = append(untrackedFiles, f)
-			}
+	for _, f := range status.Untracked {
+		if _, err := sandbox.ValidatePath(h.workspace, repoPath, f); err == nil {
+			untrackedFiles = append(untrackedFiles, f)
 		}
 	}
 	out.Untracked = untrackedFiles
-	if out.Staged == nil {
-		out.Staged = []string{}
-	}
-	if out.Modified == nil {
-		out.Modified = []string{}
-	}
 	if out.Untracked == nil {
 		out.Untracked = []string{}
 	}
@@ -1043,58 +840,4 @@ func (h *handlers) wip(ctx context.Context, _ *mcp.CallToolRequest, input WipInp
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: formatWip(out)}}}, nil, nil
 }
 
-func formatWip(out WipOutput) string {
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("On branch %s\n", out.Branch))
-	if out.Ahead > 0 || out.Behind > 0 {
-		sb.WriteString(fmt.Sprintf("Your branch is ahead by %d commits and behind by %d commits.\n", out.Ahead, out.Behind))
-	}
-	sb.WriteString("\n")
-	if len(out.Staged) > 0 {
-		sb.WriteString("Changes to be committed:\n")
-		for _, f := range out.Staged {
-			sb.WriteString(fmt.Sprintf("  staged:    %s\n", f))
-		}
-		sb.WriteString("\n")
-	}
-	if len(out.Modified) > 0 {
-		sb.WriteString("Changes not staged for commit:\n")
-		for _, f := range out.Modified {
-			sb.WriteString(fmt.Sprintf("  modified:  %s\n", f))
-		}
-		sb.WriteString("\n")
-	}
-	if len(out.Untracked) > 0 {
-		sb.WriteString("Untracked files:\n")
-		for _, f := range out.Untracked {
-			sb.WriteString(fmt.Sprintf("  untracked: %s\n", f))
-		}
-		sb.WriteString("\n")
-	}
-	if len(out.Staged) == 0 && len(out.Modified) == 0 && len(out.Untracked) == 0 {
-		sb.WriteString("nothing to commit, working tree clean\n")
-		return sb.String()
-	}
-	if out.Omitted != nil && out.Omitted.Truncated {
-		sb.WriteString(fmt.Sprintf("[Warning: Diff truncated. Reason: %s]\n", out.Omitted.Reason))
-		if len(out.Omitted.AffectedFiles) > 0 {
-			sb.WriteString("Files affected:\n")
-			for _, f := range out.Omitted.AffectedFiles {
-				sb.WriteString(fmt.Sprintf("- %s\n", f))
-			}
-		}
-		sb.WriteString("\n")
-	}
-	sb.WriteString(fmt.Sprintf("Stats: %d files changed, +%d insertions, -%d deletions\n\n",
-		out.Stats.FilesChanged, out.Stats.Insertions, out.Stats.Deletions))
-	if out.Diff != "" {
-		sb.WriteString("```diff\n")
-		sb.WriteString(out.Diff)
-		if !strings.HasSuffix(out.Diff, "\n") {
-			sb.WriteString("\n")
-		}
-		sb.WriteString("```\n")
-	}
-	return sb.String()
-}
 

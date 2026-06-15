@@ -98,7 +98,7 @@ func parseBranchFromDecoration(decoration string) string {
 	return ""
 }
 
-func (h *handlers) collectReviewBundle(ctx context.Context, _ *mcp.CallToolRequest, input CollectReviewBundleInput) (*mcp.CallToolResult, CollectReviewBundleOutput, error) {
+func (h *handlers) collectReviewBundle(ctx context.Context, _ *mcp.CallToolRequest, input CollectReviewBundleInput) (*mcp.CallToolResult, any, error) {
 	if input.JiraTag == "" && input.Commit == "" {
 		return nil, CollectReviewBundleOutput{}, fmt.Errorf("one of jiraTag or commit is required")
 	}
@@ -197,7 +197,7 @@ func (h *handlers) collectReviewBundle(ctx context.Context, _ *mcp.CallToolReque
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: markdownStr},
 		},
-	}, CollectReviewBundleOutput{}, nil
+	}, nil, nil
 }
 
 func renderMarkdown(out CollectReviewBundleOutput) string {
@@ -290,19 +290,7 @@ func (h *handlers) showCommitDetail(ctx context.Context, repoPath, ref string) R
 		detail.Diff = fmt.Sprintf("error: %v", err)
 		return detail
 	}
-	metaLines := splitLines(strings.TrimLeft(string(metaOut), "\n"))
-	if len(metaLines) >= 1 {
-		detail.Hash = metaLines[0]
-	}
-	if len(metaLines) >= 2 {
-		detail.Author = metaLines[1]
-	}
-	if len(metaLines) >= 3 {
-		detail.Date = metaLines[2]
-	}
-	if len(metaLines) >= 4 {
-		detail.Message = strings.TrimRight(strings.Join(metaLines[3:], "\n"), "\n")
-	}
+	detail.Hash, detail.Author, detail.Date, detail.Message = parseCommitMeta(metaOut)
 
 	// Stat.
 	statOut, err := runner.RunGit(ctx, repoPath, "show", "--stat", "--format=", ref)

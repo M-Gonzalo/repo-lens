@@ -50,7 +50,7 @@ func (h *handlers) discoverRepos() []struct{ name, path string } {
 }
 
 // listRepos walks h.workspace and returns metadata for every git repository found.
-func (h *handlers) listRepos(ctx context.Context, _ *mcp.CallToolRequest, _ ListReposInput) (*mcp.CallToolResult, ListReposOutput, error) {
+func (h *handlers) listRepos(ctx context.Context, _ *mcp.CallToolRequest, _ ListReposInput) (*mcp.CallToolResult, any, error) {
 	discovered := h.discoverRepos()
 	repos := make([]RepoInfo, 0, len(discovered))
 
@@ -74,7 +74,7 @@ func (h *handlers) listRepos(ctx context.Context, _ *mcp.CallToolRequest, _ List
 }
 
 // search runs ripgrep against a validated repository and returns paginated results.
-func (h *handlers) search(ctx context.Context, _ *mcp.CallToolRequest, input SearchInput) (*mcp.CallToolResult, SearchOutput, error) {
+func (h *handlers) search(ctx context.Context, _ *mcp.CallToolRequest, input SearchInput) (*mcp.CallToolResult, any, error) {
 	repoPath, err := sandbox.ValidateRepo(h.workspace, input.Repo)
 	if err != nil {
 		return nil, SearchOutput{}, err
@@ -151,7 +151,7 @@ func (h *handlers) search(ctx context.Context, _ *mcp.CallToolRequest, input Sea
 
 // readFileAtRef reads a file from git history at the given ref and returns a
 // (possibly windowed and truncated) view of its contents.
-func (h *handlers) readFileAtRef(ctx context.Context, _ *mcp.CallToolRequest, input ReadFileAtRefInput) (*mcp.CallToolResult, ReadFileAtRefOutput, error) {
+func (h *handlers) readFileAtRef(ctx context.Context, _ *mcp.CallToolRequest, input ReadFileAtRefInput) (*mcp.CallToolResult, any, error) {
 	repoPath, err := sandbox.ValidateRepo(h.workspace, input.Repo)
 	if err != nil {
 		return nil, ReadFileAtRefOutput{}, err
@@ -245,5 +245,5 @@ func (h *handlers) readFileAtRef(ctx context.Context, _ *mcp.CallToolRequest, in
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: sb.String()},
 		},
-	}, ReadFileAtRefOutput{}, nil
+	}, nil, nil
 }
