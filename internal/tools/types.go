@@ -182,21 +182,6 @@ type GitBranchesOutput struct {
 	Branches []BranchInfo `json:"branches"`
 }
 
-// — gitStatus —
-
-type GitStatusInput struct {
-	Repo   string `json:"repo" jsonschema:"name of the repository under workspace"`
-	Format string `json:"format,omitempty" jsonschema:"Output format: 'text' (default) or 'json'"`
-}
-
-type GitStatusOutput struct {
-	Branch    string   `json:"branch"`
-	Ahead     int      `json:"ahead"`
-	Behind    int      `json:"behind"`
-	Staged    []string `json:"staged"`
-	Modified  []string `json:"modified"`
-	Untracked []string `json:"untracked"`
-}
 
 // — fileHistory —
 

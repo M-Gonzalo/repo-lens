@@ -98,39 +98,6 @@ func formatGitBlame(out GitBlameOutput) string {
 	return sb.String()
 }
 
-func formatGitStatus(out GitStatusOutput) string {
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("On branch %s\n", out.Branch))
-	if out.Ahead > 0 || out.Behind > 0 {
-		sb.WriteString(fmt.Sprintf("Your branch is ahead by %d commits and behind by %d commits.\n", out.Ahead, out.Behind))
-	}
-	sb.WriteString("\n")
-	if len(out.Staged) > 0 {
-		sb.WriteString("Changes to be committed:\n")
-		for _, f := range out.Staged {
-			sb.WriteString(fmt.Sprintf("  staged:    %s\n", f))
-		}
-		sb.WriteString("\n")
-	}
-	if len(out.Modified) > 0 {
-		sb.WriteString("Changes not staged for commit:\n")
-		for _, f := range out.Modified {
-			sb.WriteString(fmt.Sprintf("  modified:  %s\n", f))
-		}
-		sb.WriteString("\n")
-	}
-	if len(out.Untracked) > 0 {
-		sb.WriteString("Untracked files:\n")
-		for _, f := range out.Untracked {
-			sb.WriteString(fmt.Sprintf("  untracked: %s\n", f))
-		}
-		sb.WriteString("\n")
-	}
-	if len(out.Staged) == 0 && len(out.Modified) == 0 && len(out.Untracked) == 0 {
-		sb.WriteString("nothing to commit, working tree clean\n")
-	}
-	return sb.String()
-}
 
 func formatFileHistory(out FileHistoryOutput) string {
 	var sb strings.Builder

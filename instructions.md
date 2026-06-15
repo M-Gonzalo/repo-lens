@@ -106,15 +106,6 @@ Before using any other tool, call `listRepos` to discover what repos exist and t
 
 ---
 
-### `gitStatus`
-**When**: You want to know the current state of a repo — what's staged, modified, untracked.
-**Key params**:
-- `repo` — the repository name
-- `format` — output format: `"text"` (default) or `"json"`
-**Returns**: branch, ahead/behind counts, staged files, modified files, untracked files.
-
----
-
 ### `fileHistory`
 **When**: You want a compact changelog for one specific file — how has it evolved?
 **Key params**:

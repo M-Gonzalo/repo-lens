@@ -45,7 +45,6 @@ The workspace is the root directory that contains your git repositories. repo-le
 | `gitShow` | Full details of a single commit |
 | `gitBlame` | Line-by-line authorship |
 | `gitBranches` | List local or remote branches |
-| `gitStatus` | Working tree status |
 | `fileHistory` | Compact changelog for a single file |
 | `resolveJiraTag` | Find commits mentioning a Jira tag across all repos |
 | `collectReviewBundle` | Aggregate everything needed for a code review (outputs markdown by default, supports json) |

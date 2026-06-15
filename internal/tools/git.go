@@ -19,10 +19,10 @@ import (
 // Example: " 3 files changed, 10 insertions(+), 2 deletions(-)"
 var statRe = regexp.MustCompile(`(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?`)
 
-// parsePorcelainV2 parses git status --porcelain=v2 [--branch] output into a GitStatusOutput.
+// parsePorcelainV2 parses git status --porcelain=v2 [--branch] output into a WipOutput.
 // Untracked paths are raw (not sandbox-validated) — callers that need validation must do it themselves.
-func parsePorcelainV2(lines []string) GitStatusOutput {
-	var out GitStatusOutput
+func parsePorcelainV2(lines []string) WipOutput {
+	var out WipOutput
 	for _, line := range lines {
 		switch {
 		case strings.HasPrefix(line, "# branch.head "):
@@ -558,29 +558,6 @@ func (h *handlers) gitBranches(ctx context.Context, _ *mcp.CallToolRequest, inpu
 	return nil, GitBranchesOutput{Branches: branches}, nil
 }
 
-// gitStatus returns the working-tree status of a repository.
-func (h *handlers) gitStatus(ctx context.Context, _ *mcp.CallToolRequest, input GitStatusInput) (*mcp.CallToolResult, any, error) {
-	repoPath, err := sandbox.ValidateRepo(h.workspace, input.Repo)
-	if err != nil {
-		return nil, GitStatusOutput{}, err
-	}
-
-	raw, err := runner.RunGit(ctx, repoPath, "status", "--porcelain=v2", "--branch")
-	if err != nil {
-		return nil, GitStatusOutput{}, err
-	}
-
-	out := parsePorcelainV2(splitLines(string(raw)))
-	if input.Format == "json" {
-		return nil, out, nil
-	}
-	textStr := formatGitStatus(out)
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: textStr},
-		},
-	}, nil, nil
-}
 
 // fileHistory returns a compact changelog for a single file.
 func (h *handlers) fileHistory(ctx context.Context, _ *mcp.CallToolRequest, input FileHistoryInput) (*mcp.CallToolResult, any, error) {

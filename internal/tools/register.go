@@ -58,11 +58,6 @@ func Register(s *mcp.Server, workspace string) {
 	}, h.gitBranches)
 
 	mcp.AddTool(s, &mcp.Tool{
-		Name:        "gitStatus",
-		Description: "Show the working tree status of a repository: current branch, ahead/behind counts, staged changes, unstaged modifications, and untracked files.",
-	}, h.gitStatus)
-
-	mcp.AddTool(s, &mcp.Tool{
 		Name:        "fileHistory",
 		Description: "Show a compact changelog for a single file: each commit that touched it, with lines added/removed. Follows renames. Use offset for pagination.",
 	}, h.fileHistory)
