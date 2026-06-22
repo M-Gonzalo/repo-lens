@@ -52,7 +52,6 @@ func RunGitDiffNoIndex(ctx context.Context, repoPath string, relPath string) ([]
 	return stdout.Bytes(), nil
 }
 
-
 // RunRipgrep runs rg with the given args in searchPath.
 // Exit code 1 (no matches) is treated as success with empty output.
 func RunRipgrep(ctx context.Context, searchPath string, args ...string) ([]byte, error) {

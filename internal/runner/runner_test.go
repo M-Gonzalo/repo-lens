@@ -200,4 +200,3 @@ func TestRunCommandWithTimeout_ExceedsTimeout(t *testing.T) {
 		t.Fatal("expected error when command exceeds timeout, got nil")
 	}
 }
-

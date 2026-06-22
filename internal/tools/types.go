@@ -182,7 +182,6 @@ type GitBranchesOutput struct {
 	Branches []BranchInfo `json:"branches"`
 }
 
-
 // — fileHistory —
 
 type FileHistoryInput struct {

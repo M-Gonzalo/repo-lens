@@ -98,7 +98,6 @@ func formatGitBlame(out GitBlameOutput) string {
 	return sb.String()
 }
 
-
 func formatFileHistory(out FileHistoryOutput) string {
 	var sb strings.Builder
 	if out.Omitted != nil && out.Omitted.Truncated {

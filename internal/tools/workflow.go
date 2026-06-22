@@ -328,7 +328,7 @@ func stripANSI(s string) string {
 	return ansiRegex.ReplaceAllString(s, "")
 }
 
-const researchTimeout = 180 * time.Second
+const researchTimeout = 10 * time.Minute
 
 // ensureResearcherAgent writes the embedded agent definition to the global
 // OpenCode agent directory if it doesn't already exist.

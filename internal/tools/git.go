@@ -558,7 +558,6 @@ func (h *handlers) gitBranches(ctx context.Context, _ *mcp.CallToolRequest, inpu
 	return nil, GitBranchesOutput{Branches: branches}, nil
 }
 
-
 // fileHistory returns a compact changelog for a single file.
 func (h *handlers) fileHistory(ctx context.Context, _ *mcp.CallToolRequest, input FileHistoryInput) (*mcp.CallToolResult, any, error) {
 	repoPath, err := sandbox.ValidateRepo(h.workspace, input.Repo)
@@ -743,7 +742,10 @@ func (h *handlers) wip(ctx context.Context, _ *mcp.CallToolRequest, input WipInp
 		untrackedOmitted = true
 	}
 
-	type untrackedDiff struct{ diffText string; insertions int }
+	type untrackedDiff struct {
+		diffText   string
+		insertions int
+	}
 	var untrackedDiffs []untrackedDiff
 	for _, file := range untrackedFiles {
 		diffBytes, err := runner.RunGitDiffNoIndex(ctx, repoPath, file)
@@ -816,5 +818,3 @@ func (h *handlers) wip(ctx context.Context, _ *mcp.CallToolRequest, input WipInp
 	}
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: formatWip(out)}}}, nil, nil
 }
-
-
